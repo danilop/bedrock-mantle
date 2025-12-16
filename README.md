@@ -165,16 +165,9 @@ bedrock-mantle info
 
 The **Chat Completions API** supports all Bedrock models.
 
-The **Responses API** currently supports OpenAI OSS GPT models:
-
-- `openai.gpt-oss-20b` - Smaller, lower latency
-- `openai.gpt-oss-120b` - Larger, production-optimized
+The **Responses API** currently supports OpenAI OSS GPT models.
 
 Use `list-models` to see all available models in your region.
-
-## Supported Regions
-
-us-east-1, us-east-2, us-west-2, ap-southeast-3, ap-south-1, ap-northeast-1, eu-central-1, eu-west-1, eu-west-2, eu-south-1, eu-north-1, sa-east-1
 
 ## Development
 
