@@ -175,7 +175,7 @@ Use `list-models` to see all available models in your region.
 # Install dependencies
 uv sync
 
-# Run tests (requires credentials in .env)
+# Run tests (requires credentials in .env or as env vars)
 uv run pytest tests/ -v
 
 # Lint and format
