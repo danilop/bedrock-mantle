@@ -2,9 +2,7 @@
 
 A CLI for exploring [Amazon Bedrock OpenAI-compatible APIs](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html).
 
-## Why This Matters
-
-Amazon Bedrock now supports **OpenAI-compatible APIs** through Project Mantle. This means:
+Amazon Bedrock now supports **OpenAI-compatible APIs** through Project Mantle:
 
 - **Use familiar APIs** - Same endpoints and formats you know from OpenAI
 - **Drop-in compatibility** - Existing OpenAI SDK code works with minimal changes
@@ -86,6 +84,7 @@ Choose this when you need:
 
 | Feature | Responses API | Chat Completions API |
 |---------|---------------|---------------------|
+| Model Support | OpenAI OSS GPT models only | All Bedrock models |
 | State Management | Server-side (stateful) | Client-side (stateless) |
 | Background Processing | ✓ Supported | ✗ Not available |
 | ZDR Compatible | ✗ Stores data ~30 days | ✓ No data stored |
@@ -163,6 +162,10 @@ bedrock-mantle info
 ```
 
 ## Available Models
+
+The **Chat Completions API** supports all Bedrock models.
+
+The **Responses API** currently supports only OpenAI OSS GPT models:
 
 - `openai.gpt-oss-20b` - Smaller, lower latency
 - `openai.gpt-oss-120b` - Larger, production-optimized
