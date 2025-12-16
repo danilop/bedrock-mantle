@@ -165,7 +165,7 @@ bedrock-mantle info
 
 The **Chat Completions API** supports all Bedrock models.
 
-The **Responses API** currently supports only OpenAI OSS GPT models:
+The **Responses API** currently supports OpenAI OSS GPT models:
 
 - `openai.gpt-oss-20b` - Smaller, lower latency
 - `openai.gpt-oss-120b` - Larger, production-optimized
