@@ -1,0 +1,48 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+.installed.cfg
+MANIFEST
+
+# Virtual environments
+.venv
+venv/
+env/
+
+# Environment files (credentials)
+.env
+.env.local
+
+# Unit test / coverage reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checkers
+.mypy_cache/
+.pytype/
+.pyre/
+
+# Ruff
+.ruff_cache/
+
+# Dev tools
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
