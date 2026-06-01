@@ -84,7 +84,7 @@ Choose this when you need:
 
 | Feature | Responses API | Chat Completions API |
 |---------|---------------|---------------------|
-| Model Support | OpenAI OSS GPT models only | All Bedrock models |
+| Model Support | All OpenAI GPT models | All except GPT-5.5/5.4 |
 | State Management | Server-side (stateful) | Client-side (stateless) |
 | Background Processing | ✓ Supported | ✗ Not available |
 | ZDR Compatible | ✗ Stores data ~30 days | ✓ No data stored |
@@ -109,7 +109,7 @@ pip install -e .
 Set these two required environment variables:
 
 ```bash
-export OPENAI_BASE_URL=https://bedrock-mantle.us-east-1.api.aws/v1
+export OPENAI_BASE_URL=https://bedrock-mantle.us-east-2.api.aws/v1
 export OPENAI_API_KEY=your-amazon-bedrock-api-key
 ```
 
@@ -119,6 +119,10 @@ Or create a `.env` file (the CLI loads it automatically):
 cp .env.example .env
 # Edit .env with your values
 ```
+
+The CLI automatically selects the correct endpoint path based on the model:
+- **GPT-5.5 / GPT-5.4** → `/openai/v1` (e.g., `https://bedrock-mantle.us-east-2.api.aws/openai/v1`)
+- **GPT-OSS-120b / GPT-OSS-20b** → `/v1` (e.g., `https://bedrock-mantle.us-east-2.api.aws/v1`)
 
 Get your API key from the [Amazon Bedrock console](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html).
 
@@ -133,20 +137,23 @@ bedrock-mantle list-models
 ### Chat Options
 
 ```bash
-# Responses API with streaming (default)
+# Responses API with GPT-5.5 (uses /openai/v1 automatically)
+bedrock-mantle chat --model openai.gpt-5.5
+
+# Responses API with OSS model (uses /v1 automatically)
 bedrock-mantle chat --model openai.gpt-oss-120b
 
-# Chat Completions API
+# Chat Completions API (All Bedrock models except GPT-5.5 / GPT-5.4)
 bedrock-mantle chat --model openai.gpt-oss-120b --completions
 
 # Background processing
-bedrock-mantle chat --model openai.gpt-oss-120b --background
+bedrock-mantle chat --model openai.gpt-5.5 --background
 
 # Disable streaming
-bedrock-mantle chat --model openai.gpt-oss-120b --no-stream
+bedrock-mantle chat --model openai.gpt-5.5 --no-stream
 
 # Custom system prompt
-bedrock-mantle chat --model openai.gpt-oss-120b --system "You are a pirate"
+bedrock-mantle chat --model openai.gpt-5.5 --system "You are a pirate"
 ```
 
 ### In-Chat Commands
@@ -163,9 +170,18 @@ bedrock-mantle info
 
 ## Available Models
 
-The **Chat Completions API** supports all Bedrock models.
+| Model | Responses API | Chat Completions API | Endpoint |
+|-------|:---:|:---:|----------|
+| `openai.gpt-5.5` | ✓ | ✗ | `/openai/v1` |
+| `openai.gpt-5.4` | ✓ | ✗ | `/openai/v1` |
+| `openai.gpt-oss-120b` | ✓ | ✓ | `/v1` |
+| `openai.gpt-oss-20b` | ✓ | ✓ | `/v1` |
 
-The **Responses API** currently supports OpenAI OSS GPT models.
+**Regions:**
+- GPT-5.5: US East (Ohio) `us-east-2`
+- GPT-5.4: US East (Ohio) `us-east-2`, US West (Oregon) `us-west-2`
+
+Check the [full list of Regions](https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.html) for future updates.
 
 Use `list-models` to see all available models in your region.
 

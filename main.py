@@ -6,10 +6,10 @@ This CLI provides access to the Bedrock Mantle APIs which are compatible with Op
 API format, including the Responses API and Chat Completions API.
 
 Key differences between APIs:
-- Responses API: Stateful, supports background processing, maintains conversation context
-- Chat Completions API: Stateless, simpler but requires manual context management
-
-Both APIs support the same models through the Mantle endpoint.
+- Responses API: Stateful, supports background processing, maintains conversation context.
+  Supports OpenAI GPT models (GPT-5.5, GPT-5.4, GPT-OSS-120b, GPT-OSS-20b).
+- Chat Completions API: Stateless, simpler but requires manual context management.
+  Supports all Bedrock models.
 """
 
 import os
@@ -26,6 +26,10 @@ load_dotenv()
 
 # Command constants
 EXIT_COMMANDS = frozenset({"/quit", "/q", "/exit", "/e"})
+
+# Models that support the Responses API (/openai/v1)
+# OSS models only support Chat Completions API (/v1)
+RESPONSES_API_MODELS = frozenset({"openai.gpt-5.5", "openai.gpt-5.4"})
 
 
 def process_streaming_events(stream_response: Iterator[Any]) -> tuple[str, str | None]:
@@ -97,8 +101,17 @@ def extract_response_text(response: Any) -> str:
     return str(response.output)
 
 
-def create_client() -> OpenAI:
-    """Create an OpenAI client configured for Bedrock Mantle."""
+# Models that require the /openai/v1 endpoint
+OPENAI_PATH_MODELS = frozenset({"openai.gpt-5.5", "openai.gpt-5.4"})
+
+
+def create_client(model: str | None = None) -> OpenAI:
+    """Create an OpenAI client configured for Bedrock Mantle.
+
+    Args:
+        model: Model ID. GPT-5.5/5.4 use /openai/v1, others use /v1.
+            If None, uses /v1 (for list-models).
+    """
     api_key = os.environ.get("OPENAI_API_KEY")
     base_url = os.environ.get("OPENAI_BASE_URL")
 
@@ -111,8 +124,18 @@ def create_client() -> OpenAI:
     if not base_url:
         raise click.ClickException(
             "OPENAI_BASE_URL is required. Set it in .env file or as environment variable.\n"
-            "Example: https://bedrock-mantle.us-east-1.api.aws/v1"
+            "Example: https://bedrock-mantle.us-east-2.api.aws/v1"
         )
+
+    # Normalize: strip trailing slash and known path suffixes to get the host
+    host = base_url.rstrip("/")
+    for suffix in ("/openai/v1", "/v1"):
+        if host.endswith(suffix):
+            host = host[: -len(suffix)]
+            break
+
+    use_openai_path = model in OPENAI_PATH_MODELS if model else False
+    base_url = f"{host}/openai/v1" if use_openai_path else f"{host}/v1"
 
     return OpenAI(base_url=base_url, api_key=api_key)
 
@@ -127,12 +150,13 @@ def cli():
     - Responses API: Stateful conversations with background processing support
     - Chat Completions API: Stateless chat completions
 
-    Both Responses API and Chat Completions API support the same models.
-    The Responses API adds stateful conversation management and async background processing.
+    The Responses API supports OpenAI GPT models (GPT-5.5, GPT-5.4, GPT-OSS-120b, GPT-OSS-20b).
+    The Chat Completions API supports all Bedrock models.
 
     Configuration is done via environment variables (or .env file):
     - OPENAI_API_KEY: Your Bedrock API key (required)
     - OPENAI_BASE_URL: Mantle endpoint URL (required)
+      Format: https://bedrock-mantle.<region>.api.aws/openai/v1
     """
     pass
 
@@ -142,16 +166,16 @@ def list_models():
     """
     List available models for Bedrock Mantle.
 
-    Models listed here are available for both the Responses API and Chat Completions API.
-    The same set of models is supported by both APIs.
+    The Responses API supports OpenAI GPT models.
+    The Chat Completions API supports all Bedrock models.
+    Use 'list-models' to see what's available in your region.
     """
     try:
         client = create_client()
     except click.ClickException:
         raise  # Let credential errors propagate with their original message
 
-    base_url = os.environ.get("OPENAI_BASE_URL", "")
-    click.echo(f"Endpoint: {base_url}")
+    click.echo(f"Endpoint: {client.base_url}")
     click.echo()
 
     try:
@@ -252,7 +276,7 @@ def chat(model: str, no_stream: bool, completions: bool, background: bool, syste
     click.echo()
 
     try:
-        client = create_client()
+        client = create_client(model=model)
     except click.ClickException:
         raise  # Let credential errors propagate with their original message
 
@@ -481,21 +505,28 @@ CONFIGURATION
 Set these environment variables (or use a .env file):
 
   OPENAI_BASE_URL  Mantle endpoint (required)
-                   Example: https://bedrock-mantle.us-east-1.api.aws/v1
+                   Format: https://bedrock-mantle.<region>.api.aws/v1
+                   The CLI auto-selects /v1 or /openai/v1 based on model.
 
   OPENAI_API_KEY   Your Bedrock API key (required)
                    Generate at: https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html
 
-Supported Regions:
-  us-east-1, us-east-2, us-west-2, ap-southeast-3, ap-south-1,
-  ap-northeast-1, eu-central-1, eu-west-1, eu-west-2, eu-south-1,
-  eu-north-1, sa-east-1
+Available Regions:
+  GPT-5.5:  us-east-2
+  GPT-5.4:  us-east-2, us-west-2
+
+ENDPOINT ROUTING
+----------------
+The CLI automatically selects the correct endpoint path based on model:
+  - openai.gpt-5.5 / openai.gpt-5.4  -> /openai/v1
+  - openai.gpt-oss-120b / gpt-oss-20b -> /v1
 
 API COMPARISON
 --------------
 ┌─────────────────────────┬─────────────────────┬────────────────────────┐
 │ Feature                 │ Responses API       │ Chat Completions API   │
 ├─────────────────────────┼─────────────────────┼────────────────────────┤
+│ Model Support           │ All OpenAI GPT      │ OSS models only        │
 │ State Management        │ Stateful            │ Stateless              │
 │ Conversation Context    │ Automatic (ID)      │ Manual (history)       │
 │ Background Processing   │ ✓ Supported         │ ✗ Not supported        │
@@ -503,16 +534,19 @@ API COMPARISON
 │ Streaming               │ ✓ Supported         │ ✓ Supported            │
 │ Tool/Function Calling   │ ✓ Supported         │ ✓ Supported            │
 │ Cancel Request          │ ✓ Supported         │ ✗ Not supported        │
+│ ZDR Compatible          │ ✗ Stores data       │ ✓ No data stored       │
 └─────────────────────────┴─────────────────────┴────────────────────────┘
 
 MODEL AVAILABILITY
 ------------------
-Both APIs access the same set of models through the Mantle endpoint.
-Use 'list-models' to see available models.
+  Model               │ Responses API │ Chat Completions │ Endpoint
+  ────────────────────┼───────────────┼──────────────────┼──────────
+  openai.gpt-5.5     │      ✓        │       ✗          │ /openai/v1
+  openai.gpt-5.4     │      ✓        │       ✗          │ /openai/v1
+  openai.gpt-oss-120b│      ✓        │       ✓          │ /v1
+  openai.gpt-oss-20b │      ✓        │       ✓          │ /v1
 
-Known models include:
-  - openai.gpt-oss-20b: Smaller model, optimized for lower latency
-  - openai.gpt-oss-120b: Larger model, optimized for production use
+Use 'list-models' to see available models in your region.
 
 BACKGROUND PROCESSING
 ---------------------
@@ -522,28 +556,13 @@ The Responses API supports async background processing for long-running tasks:
   3. Poll for completion using the response ID
   4. Retrieve results when status="completed"
 
-This is useful for:
-  - Complex reasoning tasks that may take minutes
-  - Avoiding connection timeouts
-  - Building reliable async workflows
+TIPS
+----
+- Start GPT-5.5 with reasoning effort "medium"
+- Start GPT-5.4 with effort set explicitly (default is "none")
+- During high demand, requests are queued rather than rejected
 
-LIMITATIONS
------------
-- Chat Completions API does not support background processing
-- Background mode has higher time-to-first-token latency
-
-ZERO DATA RETENTION (ZDR)
--------------------------
-ZDR is a policy where API inputs/outputs are not stored beyond immediate processing.
-By default, the API retains data for 30 days for safety monitoring.
-
-The Responses API is NOT ZDR-compatible because it stores data for:
-  - Background processing (~10 minutes for polling)
-  - Stateful conversations (~30 days for previous_response_id)
-
-The Chat Completions API is stateless and can be ZDR-compatible.
-
-See: https://platform.openai.com/docs/guides/your-data
+See: https://aws.amazon.com/bedrock/openai/
 """)
 
 
