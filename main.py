@@ -674,5 +674,83 @@ See: https://platform.openai.com/docs/guides/your-data
 """)
 
 
+PROG_NAME = "bedrock-mantle"
+COMPLETE_VAR = "_BEDROCK_MANTLE_COMPLETE"
+
+# Per-shell config: the file to write the script to and the profile to source it from.
+SHELL_CONFIG = {
+    "bash": ("~/.config/bedrock-mantle/complete.bash", "~/.bashrc"),
+    "zsh": ("~/.config/bedrock-mantle/complete.zsh", "~/.zshrc"),
+    "fish": ("~/.config/fish/completions/bedrock-mantle.fish", None),
+}
+
+
+def generate_completion(shell: str) -> str:
+    """Render the shell completion script for the given shell."""
+    from click.shell_completion import get_completion_class
+
+    comp_cls = get_completion_class(shell)
+    if comp_cls is None:
+        raise click.ClickException(f"Unsupported shell: {shell}")
+    return comp_cls(cli, {}, PROG_NAME, COMPLETE_VAR).source()
+
+
+@cli.command("completion")
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
+@click.option(
+    "--install",
+    is_flag=True,
+    default=False,
+    help="Write the completion script and wire it into your shell profile.",
+)
+def completion(shell: str, install: bool):
+    """
+    Generate (or install) shell completion for bedrock-mantle.
+
+    \b
+    Print the script to evaluate in the current shell:
+      eval "$(bedrock-mantle completion bash)"
+
+    \b
+    Or install it permanently for new shells:
+      bedrock-mantle completion bash --install
+    """
+    script = generate_completion(shell)
+
+    if not install:
+        click.echo(script)
+        return
+
+    script_path, profile = SHELL_CONFIG[shell]
+    script_file = os.path.expanduser(script_path)
+    os.makedirs(os.path.dirname(script_file), exist_ok=True)
+    with open(script_file, "w") as f:
+        f.write(script + "\n")
+    click.echo(f"Wrote completion script to {script_path}")
+
+    # fish auto-loads from its completions dir; nothing else to wire up.
+    if profile is None:
+        click.echo("Restart your shell (or open a new one) to enable completion.")
+        return
+
+    profile_file = os.path.expanduser(profile)
+    source_line = f"[ -f {script_path} ] && source {script_path}"
+    marker = "# bedrock-mantle shell completion"
+
+    existing = ""
+    if os.path.exists(profile_file):
+        with open(profile_file) as f:
+            existing = f.read()
+
+    if marker in existing:
+        click.echo(f"{profile} already sources the completion script. Nothing to do.")
+    else:
+        with open(profile_file, "a") as f:
+            f.write(f"\n{marker}\n{source_line}\n")
+        click.echo(f"Added source line to {profile}")
+
+    click.echo(f"Run 'source {profile}' or open a new shell to enable completion.")
+
+
 if __name__ == "__main__":
     cli()

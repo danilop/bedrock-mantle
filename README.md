@@ -104,6 +104,21 @@ uv sync
 pip install -e .
 ```
 
+### Shell Completion
+
+Enable tab completion for commands and options. Install it permanently for new shells:
+
+```bash
+bedrock-mantle completion bash --install   # or: zsh, fish
+```
+
+Then open a new shell (or `source` your profile). To enable it for the current
+shell without installing, evaluate the script directly:
+
+```bash
+eval "$(bedrock-mantle completion bash)"
+```
+
 ## Configuration
 
 The endpoint URL is always required:
