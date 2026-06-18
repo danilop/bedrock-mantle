@@ -106,12 +106,50 @@ pip install -e .
 
 ## Configuration
 
-Set these two required environment variables:
+The endpoint URL is always required:
 
 ```bash
 export OPENAI_BASE_URL=https://bedrock-mantle.us-east-1.api.aws/v1
+```
+
+For authentication, you have two options.
+
+### Option 1: Bedrock API key
+
+```bash
 export OPENAI_API_KEY=your-amazon-bedrock-api-key
 ```
+
+Get your API key from the [Amazon Bedrock console](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html).
+
+### Option 2: AWS profile / credentials
+
+Authenticate with standard AWS credentials (no API key needed). The CLI mints a
+short-term Bedrock token (valid ~12h) from your credentials on the fly:
+
+```bash
+# Use a named profile explicitly:
+bedrock-mantle list-models --profile my-profile
+
+# Or rely on the default credential chain (AWS_PROFILE, SSO, env vars, etc.):
+export AWS_PROFILE=my-profile
+bedrock-mantle list-models
+```
+
+When using AWS credentials, `OPENAI_BASE_URL` is optional — the endpoint is built
+automatically from the region (`AWS_REGION`/`AWS_DEFAULT_REGION` or the profile's
+configured region).
+
+Authentication resolves in this order:
+
+1. `--profile <name>` — mint a token from that AWS profile
+2. `OPENAI_API_KEY` — a static Bedrock API key
+3. Default AWS credential chain (honors `AWS_PROFILE`, SSO, env vars, etc.)
+
+The region is taken from `AWS_REGION` / `AWS_DEFAULT_REGION`, or inferred from
+the `OPENAI_BASE_URL` endpoint.
+
+### Using a `.env` file
 
 Or create a `.env` file (the CLI loads it automatically):
 
@@ -119,8 +157,6 @@ Or create a `.env` file (the CLI loads it automatically):
 cp .env.example .env
 # Edit .env with your values
 ```
-
-Get your API key from the [Amazon Bedrock console](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html).
 
 ## Commands
 

@@ -13,6 +13,7 @@ Both APIs support the same models through the Mantle endpoint.
 """
 
 import os
+import re
 import time
 from collections.abc import Iterator
 from typing import Any
@@ -97,22 +98,123 @@ def extract_response_text(response: Any) -> str:
     return str(response.output)
 
 
-def create_client() -> OpenAI:
-    """Create an OpenAI client configured for Bedrock Mantle."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    base_url = os.environ.get("OPENAI_BASE_URL")
+def region_from_base_url(base_url: str) -> str | None:
+    """Best-effort extraction of an AWS region from a Mantle endpoint URL.
 
-    if not api_key:
+    Example: https://bedrock-mantle.us-east-1.api.aws/v1 -> us-east-1
+    """
+    match = re.search(r"bedrock-mantle\.([a-z0-9-]+)\.api\.aws", base_url)
+    return match.group(1) if match else None
+
+
+def mantle_base_url(region: str) -> str:
+    """Construct the Mantle endpoint URL for a region."""
+    return f"https://bedrock-mantle.{region}.api.aws/v1"
+
+
+def build_aws_session(profile: str | None):
+    """Build a boto3 session for the given profile (or the default chain).
+
+    Imports boto3 lazily to keep CLI startup fast for the static-API-key path.
+    """
+    try:
+        import boto3
+    except ImportError as e:
         raise click.ClickException(
-            "OPENAI_API_KEY is required. Set it in .env file or as environment variable.\n"
-            "See: https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html"
-        )
+            f"Could not import '{e.name}'. Reinstall the CLI to restore AWS dependencies:\n"
+            "  uv tool install . --force   (or: pip install -e .)"
+        ) from None
+
+    return boto3.Session(profile_name=profile)
+
+
+def mint_bedrock_token(session, region: str) -> str:
+    """Mint a short-term Bedrock bearer token from a boto3 session's credentials.
+
+    Args:
+        session: A boto3 Session whose credentials should be used.
+        region: AWS region for the token (required by the signer).
+
+    Returns:
+        A short-term bearer token string.
+    """
+    try:
+        from aws_bedrock_token_generator import provide_token
+    except ImportError as e:
+        raise click.ClickException(
+            f"Could not import '{e.name}'. Reinstall the CLI to restore AWS dependencies:\n"
+            "  uv tool install . --force   (or: pip install -e .)"
+        ) from None
+
+    try:
+        credentials = session.get_credentials()
+        if credentials is None:
+            raise click.ClickException(
+                "No AWS credentials found"
+                + (
+                    f" for profile '{session.profile_name}'."
+                    if session.profile_name
+                    else " in the default credential chain."
+                )
+            )
+
+        # provide_token() expects a provider exposing .load() -> credentials.
+        # Wrap the session's (frozen) credentials so the profile is honored.
+        class _CredentialProvider:
+            def load(self):
+                return credentials.get_frozen_credentials()
+
+        return provide_token(region=region, aws_credentials_provider=_CredentialProvider())
+    except click.ClickException:
+        raise
+    except Exception as e:
+        raise click.ClickException(f"Failed to mint Bedrock token: {e}") from None
+
+
+def create_client(profile: str | None = None) -> OpenAI:
+    """Create an OpenAI client configured for Bedrock Mantle.
+
+    Authentication resolves in this order:
+    1. If --profile is given, mint a short-term token from that AWS profile.
+    2. Else use OPENAI_API_KEY if set (static Bedrock API key).
+    3. Else fall back to the default AWS credential chain (env/AWS_PROFILE/SSO/etc).
+
+    OPENAI_BASE_URL is optional when a region can be determined (from the env,
+    the AWS profile config, or the URL itself) -- the endpoint is built from it.
+    """
+    base_url = os.environ.get("OPENAI_BASE_URL")
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+    region = (
+        os.environ.get("AWS_REGION")
+        or os.environ.get("AWS_DEFAULT_REGION")
+        or (region_from_base_url(base_url) if base_url else None)
+    )
+
+    # Use AWS credentials when a profile is requested, or when no static key is set.
+    use_aws = bool(profile) or not api_key
+
+    if use_aws:
+        session = build_aws_session(profile)
+        # Fall back to the region configured for the profile (e.g. ~/.aws/config).
+        if not region:
+            region = session.region_name
+        if not region:
+            raise click.ClickException(
+                "Could not determine an AWS region.\n"
+                "Set AWS_REGION/AWS_DEFAULT_REGION, configure a region for the profile,\n"
+                "or set OPENAI_BASE_URL (e.g. https://bedrock-mantle.us-east-1.api.aws/v1)."
+            )
+        api_key = mint_bedrock_token(session, region)
 
     if not base_url:
-        raise click.ClickException(
-            "OPENAI_BASE_URL is required. Set it in .env file or as environment variable.\n"
-            "Example: https://bedrock-mantle.us-east-1.api.aws/v1"
-        )
+        if not region:
+            raise click.ClickException(
+                "OPENAI_BASE_URL is required when no AWS region can be determined.\n"
+                "Set it in a .env file or as an environment variable.\n"
+                "Example: https://bedrock-mantle.us-east-1.api.aws/v1"
+            )
+        base_url = mantle_base_url(region)
 
     return OpenAI(base_url=base_url, api_key=api_key)
 
@@ -131,14 +233,28 @@ def cli():
     The Responses API adds stateful conversation management and async background processing.
 
     Configuration is done via environment variables (or .env file):
-    - OPENAI_API_KEY: Your Bedrock API key (required)
-    - OPENAI_BASE_URL: Mantle endpoint URL (required)
+    - OPENAI_BASE_URL: Mantle endpoint URL (optional if a region can be determined)
+    - OPENAI_API_KEY: Your Bedrock API key (optional if using AWS credentials)
+
+    Authentication resolves in this order:
+    1. --profile flag: mint a short-term token from that AWS profile
+    2. OPENAI_API_KEY: a static Bedrock API key
+    3. Default AWS credential chain (honors AWS_PROFILE, SSO, env vars, etc.)
+
+    When using AWS credentials, the endpoint URL is built automatically from the
+    region (AWS_REGION/AWS_DEFAULT_REGION, the profile's configured region, or
+    OPENAI_BASE_URL).
     """
     pass
 
 
 @cli.command("list-models")
-def list_models():
+@click.option(
+    "--profile",
+    default=None,
+    help="AWS named profile to authenticate with (mints a short-term Bedrock token).",
+)
+def list_models(profile: str | None):
     """
     List available models for Bedrock Mantle.
 
@@ -146,12 +262,11 @@ def list_models():
     The same set of models is supported by both APIs.
     """
     try:
-        client = create_client()
+        client = create_client(profile)
     except click.ClickException:
         raise  # Let credential errors propagate with their original message
 
-    base_url = os.environ.get("OPENAI_BASE_URL", "")
-    click.echo(f"Endpoint: {base_url}")
+    click.echo(f"Endpoint: {client.base_url}")
     click.echo()
 
     try:
@@ -205,7 +320,19 @@ def list_models():
     default="You are a helpful assistant.",
     help="System prompt for the conversation",
 )
-def chat(model: str, no_stream: bool, completions: bool, background: bool, system: str):
+@click.option(
+    "--profile",
+    default=None,
+    help="AWS named profile to authenticate with (mints a short-term Bedrock token).",
+)
+def chat(
+    model: str,
+    no_stream: bool,
+    completions: bool,
+    background: bool,
+    system: str,
+    profile: str | None,
+):
     """
     Start an interactive chat session.
 
@@ -252,7 +379,7 @@ def chat(model: str, no_stream: bool, completions: bool, background: bool, syste
     click.echo()
 
     try:
-        client = create_client()
+        client = create_client(profile)
     except click.ClickException:
         raise  # Let credential errors propagate with their original message
 
